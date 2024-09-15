@@ -1,38 +1,18 @@
 import { serve } from 'bun';
-import { Client } from 'discord.js';
-import dotenv from 'dotenv';
+import { fetchMembers } from './discordBot.js';
 
-dotenv.config();
-
-const client = new Client({ intents: ["GUILDS", "GUILD_MEMBERS"] });
-
-// Fetch members from a Discord server
-async function fetchMembers(guildId) {
-    const guild = await client.guilds.fetch(guildId);
-    await guild.members.fetch(); // Fetch all members
-
-    return guild.members.cache.map(member => ({
-        id: member.id,
-        username: member.user.username,
-        avatar: member.user.displayAvatarURL(),
-        email: member.user.email || null, // Discord users may not have an email available
-        roles: member.roles.cache.map(role => role.name) // Optional: For future implementation
-    }));
-}
-
-// Start the Discord client
-client.login(process.env.DISCORD_BOT_TOKEN)
-    .then(() => {
-        console.log('Bot logged in successfully!');
-    })
-    .catch(console.error);
-
-// Create the HTTP server
 serve({
     fetch: async (req) => {
-        if (req.method === 'GET' && req.url.startsWith('/members')) {
-            const url = new URL(req.url);
+        console.log(`Received ${req.method} request for ${req.url}`);
+
+        // Create a new URL object based on the request
+        const url = new URL(req.url);
+
+        // Check if the pathname is "/members" and the method is GET
+        if (req.method === 'GET' && url.pathname === '/members') {
             const guildId = url.searchParams.get('guildId');
+
+            console.log(`Guild ID: ${guildId}`);
 
             if (!guildId) {
                 return new Response('Guild ID is required', { status: 400 });
@@ -55,3 +35,4 @@ serve({
     },
     port: 3000,
 });
+
