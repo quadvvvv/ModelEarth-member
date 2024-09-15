@@ -7,16 +7,14 @@ import './App.css';
 
 function App() {
   const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Generate 100 fake members for testing
-    const fetchMembers = () => {
-      const fakeMembers = Array.from({ length: 100 }, (_, index) => ({
-        id: index + 1,
-        name: `Member ${index + 1}`,
-        avatarUrl: `https://via.placeholder.com/56?text=${index + 1}`, // Placeholder avatar
-      }));
-      setMembers(fakeMembers);
+    const fetchMembers = async () => {
+      const response = await fetch('http://localhost:3000/members'); // Update with your backend URL
+      const data = await response.json();
+      setMembers(data);
+      setLoading(false);
     };
 
     fetchMembers();
@@ -25,7 +23,11 @@ function App() {
   return (
     <>
       <Header />
-      <MemberShowcase members={members} />
+      {!loading ? (
+        <MemberShowcase members={members} />
+      ) : (
+        <div>Loading members...</div>
+      )}
       <BackToTopButton />
       <Footer />
     </>

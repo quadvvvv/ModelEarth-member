@@ -24,10 +24,6 @@ export async function fetchMembers(guildId) {
     }));
 }
 
-// Log the values to ensure they are being loaded correctly
-console.log(`Guild ID: ${guildId}`);
-console.log(`Bot Token: ${token}`); // Be cautious when logging sensitive information
-
 // Start the Discord client
 client.login(process.env.DISCORD_BOT_TOKEN)
     .then(() => {
