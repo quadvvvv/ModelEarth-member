@@ -1,35 +1,35 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState, useEffect } from 'react';
+import Header from './components/Header';
+import MemberShowcase from './components/MemberShowcase';
+import Footer from './components/Footer';
+import BackToTopButton from './components/BackToTopButton';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    // Generate 100 fake members for testing
+    const fetchMembers = () => {
+      const fakeMembers = Array.from({ length: 100 }, (_, index) => ({
+        id: index + 1,
+        name: `Member ${index + 1}`,
+        avatarUrl: `https://via.placeholder.com/56?text=${index + 1}`, // Placeholder avatar
+      }));
+      setMembers(fakeMembers);
+    };
+
+    fetchMembers();
+  }, []);
 
   return (
     <>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      <Header />
+      <MemberShowcase members={members} />
+      <BackToTopButton />
+      <Footer />
     </>
-  )
+  );
 }
 
-export default App
+export default App;
