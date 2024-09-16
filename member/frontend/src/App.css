@@ -1,4 +1,7 @@
 /* App.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* Basic resets and styling */
 body {
