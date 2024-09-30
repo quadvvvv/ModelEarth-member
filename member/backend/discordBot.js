@@ -1,35 +1,91 @@
+// discordBot.js
 import { Client, GatewayIntentBits } from 'discord.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
     ],
 });
 
-// Fetch members from a Discord server
-export async function fetchMembers(guildId) {
-    const guild = await client.guilds.fetch(guildId);
-    await guild.members.fetch(); // Fetch all members
+let cachedGuild = null;
+let botToken = null;
 
-    return guild.members.cache.map(member => ({
+export async function initializeBot(token) {
+    try {
+        botToken = token;
+        await client.login(token);
+        console.log('Bot logged in successfully!');
+        
+        // Assuming the bot is only in one guild for simplicity
+        cachedGuild = client.guilds.cache.first();
+        
+        if (!cachedGuild) {
+            throw new Error('No guild found');
+        }
+
+        return { success: true, guildId: cachedGuild.id };
+    } catch (error) {
+        console.error('Failed to initialize bot:', error);
+        throw error;
+    }
+}
+
+export async function fetchMembers() {
+    if (!cachedGuild) {
+        throw new Error('Guild not initialized');
+    }
+
+    await cachedGuild.members.fetch();
+    return cachedGuild.members.cache.map(member => ({
         id: member.id,
         username: member.user.username,
         avatar: member.user.displayAvatarURL(),
-        email: member.user.email || null, // Discord users may not have an email available
-        roles: member.roles.cache.map(role => role.name) // Optional: For future implementation
+        roles: member.roles.cache.map(role => role.name)
     }));
 }
 
-// Start the Discord client
-client.login(process.env.DISCORD_BOT_TOKEN)
-    .then(() => {
-        console.log('Bot logged in successfully!');
-    })
-    .catch(console.error);
+export async function fetchChannels() {
+    if (!cachedGuild) {
+        throw new Error('Guild not initialized');
+    }
 
-// Export the client for usage in other files
-export default client;
+    return cachedGuild.channels.cache
+        .filter(channel => channel.type === 0) // Only text channels
+        .map(channel => ({
+            id: channel.id,
+            name: channel.name,
+        }));
+}
+
+export async function fetchMessages(channelId, limit = 100) {
+    if (!cachedGuild) {
+        throw new Error('Guild not initialized');
+    }
+
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) {
+        throw new Error('Channel not found');
+    }
+
+    const messages = await channel.messages.fetch({ limit });
+    return messages.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        author: {
+            id: msg.author.id,
+            username: msg.author.username,
+        },
+        timestamp: msg.createdTimestamp,
+    }));
+}
+
+export function logout() {
+    cachedGuild = null;
+    botToken = null;
+    client.destroy();
+    console.log('Logged out and session destroyed');
+}
