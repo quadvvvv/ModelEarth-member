@@ -1,91 +1,67 @@
-// discordBot.js
 import { Client, GatewayIntentBits } from 'discord.js';
 
-const client = new Client({
+export async function createBot(token) {
+  const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions,
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMessageReactions,
     ],
-});
+  });
 
-let cachedGuild = null;
-let botToken = null;
+  await client.login(token);
+  console.log('Bot logged in successfully!');
 
-export async function initializeBot(token) {
-    try {
-        botToken = token;
-        await client.login(token);
-        console.log('Bot logged in successfully!');
-        
-        // Assuming the bot is only in one guild for simplicity
-        cachedGuild = client.guilds.cache.first();
-        
-        if (!cachedGuild) {
-            throw new Error('No guild found');
-        }
-
-        return { success: true, guildId: cachedGuild.id };
-    } catch (error) {
-        console.error('Failed to initialize bot:', error);
-        throw error;
-    }
+  return client;
 }
 
-export async function fetchMembers() {
-    if (!cachedGuild) {
-        throw new Error('Guild not initialized');
-    }
+export async function fetchMembers(client) {
+  const guild = client.guilds.cache.first();
+  if (!guild) {
+    throw new Error('No guild found');
+  }
 
-    await cachedGuild.members.fetch();
-    return cachedGuild.members.cache.map(member => ({
-        id: member.id,
-        username: member.user.username,
-        avatar: member.user.displayAvatarURL(),
-        roles: member.roles.cache.map(role => role.name)
+  await guild.members.fetch();
+  return guild.members.cache.map(member => ({
+    id: member.id,
+    username: member.user.username,
+    avatar: member.user.displayAvatarURL(),
+    roles: member.roles.cache.map(role => role.name)
+  }));
+}
+
+export async function fetchChannels(client) {
+  const guild = client.guilds.cache.first();
+  if (!guild) {
+    throw new Error('No guild found');
+  }
+
+  return guild.channels.cache
+    .filter(channel => channel.type === 0) // Only text channels
+    .map(channel => ({
+      id: channel.id,
+      name: channel.name,
     }));
 }
 
-export async function fetchChannels() {
-    if (!cachedGuild) {
-        throw new Error('Guild not initialized');
-    }
-
-    return cachedGuild.channels.cache
-        .filter(channel => channel.type === 0) // Only text channels
-        .map(channel => ({
-            id: channel.id,
-            name: channel.name,
-        }));
+export async function fetchMessages(client, channelId, limit = 100) {
+  const channel = await client.channels.fetch(channelId);
+  const messages = await channel.messages.fetch({ limit });
+  return messages.map(msg => ({
+    id: msg.id,
+    content: msg.content,
+    author: {
+      id: msg.author.id,
+      username: msg.author.username,
+      avatar: msg.author.displayAvatarURL(),
+    },
+    timestamp: msg.createdTimestamp,
+  }));
 }
 
-export async function fetchMessages(channelId, limit = 100) {
-    if (!cachedGuild) {
-        throw new Error('Guild not initialized');
-    }
-
-    const channel = await client.channels.fetch(channelId);
-    if (!channel) {
-        throw new Error('Channel not found');
-    }
-
-    const messages = await channel.messages.fetch({ limit });
-    return messages.map(msg => ({
-        id: msg.id,
-        content: msg.content,
-        author: {
-            id: msg.author.id,
-            username: msg.author.username,
-        },
-        timestamp: msg.createdTimestamp,
-    }));
-}
-
-export function logout() {
-    cachedGuild = null;
-    botToken = null;
-    client.destroy();
-    console.log('Logged out and session destroyed');
+export async function destroyBot(client) {
+  await client.destroy();
+  console.log('Bot session destroyed');
 }
