@@ -14,7 +14,25 @@ export async function createBot(token) {
   await client.login(token);
   console.log('Bot logged in successfully!');
 
-  return client;
+  // Wait for the client to be ready
+  await new Promise(resolve => client.once('ready', resolve));
+
+  const guildInfo = await fetchGuildInfo(client);
+
+  return { client, guildInfo };
+}
+
+async function fetchGuildInfo(client) {
+  const guild = client.guilds.cache.first();
+  if (!guild) {
+    throw new Error('No guild found');
+  }
+
+  return {
+    serverName: guild.name,
+    memberCount: guild.memberCount,
+    iconURL: guild.iconURL({ dynamic: true, size: 1024 }) // Returns a high-quality dynamic icon URL
+  };
 }
 
 export async function fetchMembers(client) {

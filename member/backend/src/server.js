@@ -36,15 +36,20 @@ const handleRequest = async (req) => {
   }
 
   // Login
+  // In server.js, update the login route:
   if (method === 'POST' && path === '/api/auth/login') {
     logRequest(req);
     const { token } = await req.json();
     try {
-      const bot = await createBot(token);
+      const { client, guildInfo } = await createBot(token);
       const sessionId = nanoid();
-      sessions.set(sessionId, { bot, token });
+      sessions.set(sessionId, { bot: client, token });
       console.log(`New session created: ${sessionId}`);
-      return new Response(JSON.stringify({ sessionId, message: 'Logged in successfully' }), {
+      return new Response(JSON.stringify({ 
+        sessionId, 
+        message: 'Logged in successfully',
+        ...guildInfo // This spreads serverName, memberCount, and iconURL into the response
+      }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
