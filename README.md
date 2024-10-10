@@ -67,6 +67,51 @@ The backend is built on Bun, a fast all-in-one JavaScript runtime. Here's a brea
 └── README.md             # Project documentation
 ```
 
+# MemberSense
+
+[Previous sections remain unchanged]
+
+## Backend Setup (Development)
+
+1. **Clone and install**
+   ```bash
+   git clone https://github.com/yourusername/membersense.git
+   cd membersense/backend
+   bun install
+   ```
+
+2. **Configure environment**
+   Create `.env` file:
+   ```
+   DISCORD_BOT_TOKEN=your_token_here
+   ```
+3. **Discord Bot Permissions** Ensure your bot has the following permissions:
+
+- Read Messages/View Channels
+- Send Messages
+- Read Message History
+- View Server Insights
+
+4. **Run the server**
+   ```bash
+   bun run server.js
+   ```
+   Server runs on `http://localhost:3000`.
+
+5. **Development mode**
+   ```bash
+   bun --hot run server.js
+   ```
+
+6. **API Endpoints**
+   - POST `/api/auth/login`: Login
+   - GET `/api/members`: Fetch members
+   - GET `/api/channels`: Fetch channels
+   - GET `/api/messages?channelId=<id>`: Fetch messages
+   - POST `/api/auth/logout`: Logout
+
+   Include `Authorization` header with session ID for authenticated requests.
+
 ## Deployment Strategy 
 
 1. **Dockerization** 
