@@ -68,3 +68,39 @@ You will then be prompted to choose a framework, such as React, Vanilla, Vue, et
     bun install # Install the dependencies
     bun dev # You can now see the (Vite + React) logos on your localhost!
 ```
+
+# Tailwind.css
+# Daisy UI
+```shell
+    bun add tailwindcss postcss autoprefixer
+```
+bun add -d tailwindcss postcss autoprefixer
+
+This command adds Tailwind CSS as a dependency to your project.
+It updates your package.json file, adding Tailwind CSS to the dependencies list.
+It downloads and installs Tailwind CSS in your node_modules folder.
+
+bun x tailwindcss init
+
+```javascript
+module.exports = {
+  content: [
+    './index.html',
+    './src/**/*.{js,jsx,ts,tsx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+```
+
+Add Tailwind directives to the CSS file (index.css, app.css)
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+
