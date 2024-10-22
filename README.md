@@ -56,9 +56,9 @@ The backend is built on Bun, a fast all-in-one JavaScript runtime. Here's a brea
 ## Directory Structure 
 
 ```bash
-/member
+membersense
 │
-├── /backend               # Backend (Bun + Discord bot)
+├── backend               # Backend (Bun + Discord bot)
 │   ├── server.js         # Main server file
 │   ├── .env              # Environment variables (Discord bot token, guild ID)
 │   ├── discordBot.js     # Discord bot implementation
