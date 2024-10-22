@@ -87,7 +87,7 @@ The backend is built on Bun, a fast all-in-one JavaScript runtime. Here's a brea
    ```
 3. **Discord Bot Permissions** Ensure your bot has the following permissions:
 
-- Read Messages/View Channels
+- View Channels
 - Send Messages
 - Read Message History
 - View Server Insights
