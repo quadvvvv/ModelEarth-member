@@ -80,12 +80,13 @@ membersense
    bun install
    ```
 
-2. **Configure environment**
-   Create `.env` file:
+2. **Configure environment**  
+   Update the `backend/.env` file. The .gitignore prevents deploying this file.
    ```
    DISCORD_BOT_TOKEN=your_token_here
    ```
-3. **Discord Bot Permissions** Ensure your bot has the following permissions:
+3. **Discord Bot Permissions**  
+   Ensure your bot has the following permissions:
 
 - View Channels
 - Send Messages
