@@ -2,6 +2,8 @@
 
 A powerful Bun app for the Discord API (and later Microsoft Outlook) which securely manages private keys in both Github and the .env.local file.
 
+Also see [Frontend](https://github.com/ModelEarth/feed/blob/main/MemberSense.md)
+
 ## Tech Stack
 
 <p align="center">
@@ -56,7 +58,7 @@ The backend is built on Bun, a fast all-in-one JavaScript runtime. Here's a brea
 ## Directory Structure 
 
 ```bash
-membersense
+MemberSense
 │
 ├── backend               # Backend (Bun + Discord bot)
 │   ├── server.js         # Main server file
