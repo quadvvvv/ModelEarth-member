@@ -81,7 +81,7 @@ membersense
    ```
 
 2. **Configure environment**  
-   Update the `backend/.env` file. The .gitignore prevents deploying this file.
+   Update the `backend/.env` file. The .gitignore prevents deploying this file from being deployed.
    ```
    DISCORD_BOT_TOKEN=your_token_here
    ```
