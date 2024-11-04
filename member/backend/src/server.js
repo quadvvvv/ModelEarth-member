@@ -1,154 +1,296 @@
-// server.js
-import { serve } from 'bun';
-import { nanoid } from 'nanoid';
-import { createBot, fetchMembers, fetchChannels, fetchMessages, destroyBot } from './discordBot.js';
+// src/server.js
+import {serve} from 'bun';
+import {nanoid} from 'nanoid';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+import {DiscordFactory} from './services/discordFactory';
 
-// In-memory store for user sessions and bot clients
-const sessions = new Map();
+export class Server {
+  constructor(config = {}) {
+    this.config = {
+      port: parseInt(process.env.PORT || '8080', 10),
+      maxConcurrentUsers:
+          parseInt(process.env.MAX_CONCURRENT_USERS || '100', 10),
+      allowedOrigins: (process.env.ALLOWED_ORIGINS || '*').split(','),
+      rateLimitWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
+      rateLimitMaxRequests:
+          parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+      sessionTimeout:
+          parseInt(process.env.SESSION_TIMEOUT || '1800000', 10),  // 30 minutes
+      cleanupInterval:
+          parseInt(process.env.CLEANUP_INTERVAL || '300000', 10),  // 5 minutes
+      ...config
+    };
 
-const authenticateSession = (req) => {
-  const sessionId = req.headers.get('Authorization');
-  if (!sessionId || !sessions.has(sessionId)) {
-    return null;
+    this.sessions = new Map();
+    this.rateLimit = new Map();
+    this.discordFactory = config.discordFactory || DiscordFactory;
+
+    this.corsHeaders = {
+      'Access-Control-Allow-Origin': this.config.allowedOrigins[0] === '*' ?
+          '*' :
+          this.config.allowedOrigins.join(', '),
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers':
+          'Content-Type, Authorization, X-Request-ID',
+    };
+
+    // Start cleanup interval if not in test mode
+    if (!config.testMode) {
+      this.startCleanupInterval();
+    }
   }
-  return { sessionId, ...sessions.get(sessionId) };
-};
 
-const logRequest = (req, sessionId = 'Unauthenticated') => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Session: ${sessionId}`);
-};
-
-const handleRequest = async (req) => {
-  const url = new URL(req.url);
-  const method = req.method;
-  const path = url.pathname;
-
-  // Handle preflight OPTIONS requests
-  if (method === 'OPTIONS') {
-    logRequest(req);
-    return new Response(null, { status: 204, headers: corsHeaders });
+  startCleanupInterval() {
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupSessions();
+    }, this.config.cleanupInterval);
   }
 
-  // Login
-  // In server.js, update the login route:
-  if (method === 'POST' && path === '/api/auth/login') {
-    logRequest(req);
-    const { token } = await req.json();
+  stopCleanupInterval() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+  }
+
+  async cleanupSessions() {
+    const now = Date.now();
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (now - session.lastActivity > this.config.sessionTimeout) {
+        console.log(`Cleaning up inactive session: ${sessionId}`);
+        await session.bot.destroy();
+        this.sessions.delete(sessionId);
+      }
+    }
+  }
+
+  isRateLimited(clientIP) {
+    const now = Date.now();
+    const windowStart = now - this.config.rateLimitWindow;
+
+    // Initialize if not exists
+    if (!this.rateLimit.has(clientIP)) {
+      this.rateLimit.set(clientIP, []);
+    }
+
+    // Clean up old entries
+    const requests = this.rateLimit.get(clientIP);
+    const validRequests = requests.filter(time => time > windowStart);
+
+    if (validRequests.length >= this.config.rateLimitMaxRequests) {
+      this.rateLimit.set(clientIP, validRequests);
+      return true;
+    }
+
+    this.rateLimit.set(clientIP, [...validRequests, now]);
+    return false;
+  }
+
+  authenticateSession(req) {
+    const sessionId = req.headers.get('Authorization');
+    if (!sessionId || !this.sessions.has(sessionId)) {
+      return null;
+    }
+    return {sessionId, ...this.sessions.get(sessionId)};
+  }
+
+  logRequest(req, sessionId = 'Unauthenticated') {
+    const requestId = req.headers.get('X-Request-ID') || nanoid();
+    console.log(`[${new Date().toISOString()}] ${requestId} ${req.method} ${
+        req.url} - Session: ${sessionId}`);
+    return requestId;
+  }
+
+  createResponse(body, status = 200, additionalHeaders = {}) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        ...this.corsHeaders,
+        'Content-Type': 'application/json',
+        ...additionalHeaders,
+      },
+    });
+  }
+
+  async handleLogin(req, requestId) {
+    // Check concurrent users limit first
+    if (this.sessions.size >= this.config.maxConcurrentUsers) {
+      return this.createResponse({
+        error: 'Maximum number of concurrent users reached'
+      }, 503);
+    }
+
+    let body;
     try {
-      const { client, guildInfo } = await createBot(token);
+      body = await req.clone().json();  // Clone the request before parsing JSON
+    } catch (error) {
+      return this.createResponse({
+        error: 'Invalid JSON payload'
+      }, 400);
+    }
+
+    const { token } = body;
+    if (!token) {
+      return this.createResponse({
+        error: 'Token is required'
+      }, 400);
+    }
+
+    try {
+      const discord = this.discordFactory.createService();
+      const guildInfo = await discord.initialize(token);
       const sessionId = nanoid();
-      sessions.set(sessionId, { bot: client, token });
-      console.log(`New session created: ${sessionId}`);
-      return new Response(JSON.stringify({ 
-        sessionId, 
+      
+      this.sessions.set(sessionId, {
+        bot: discord,
+        token,
+        createdAt: Date.now(),
+        lastActivity: Date.now()
+      });
+
+      console.log(`[${requestId}] New session created: ${sessionId}`);
+      
+      return this.createResponse({
+        sessionId,
         message: 'Logged in successfully',
-        ...guildInfo // This spreads serverName, memberCount, and iconURL into the response
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        ...guildInfo
       });
     } catch (error) {
-      console.error('Login error:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error(`[${requestId}] Login error:`, error);
+      return this.createResponse({
+        error: error.message
+      }, 400);
     }
   }
 
-  // Authenticate all other routes
-  const session = authenticateSession(req);
-  if (!session) {
-    logRequest(req);
-    console.log('Unauthorized access attempt');
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  async handleRequest(req) {
+    const requestId = this.logRequest(req);
+    const clientIP =
+        req.headers.get('X-Forwarded-For')?.split(',')[0] || 'unknown';
+    const responseHeaders = {'X-Request-ID': requestId};
+
+    try {
+      const url = new URL(req.url);
+      const method = req.method;
+      const path = url.pathname;
+
+      if (path === '/_ah/health') {
+        // Add the request to rate limit tracking before responding
+        if (this.isRateLimited(clientIP)) {
+          return this.createResponse(
+              {
+                error: 'Too many requests',
+                retryAfter: Math.ceil(this.config.rateLimitWindow / 1000)
+              },
+              429, {
+                ...responseHeaders,
+                'Retry-After':
+                    Math.ceil(this.config.rateLimitWindow / 1000).toString()
+              });
+        }
+        return this.createResponse({status: 'healthy'}, 200, responseHeaders);
+      }
+
+      if (method === 'OPTIONS') {
+        return new Response(
+            null,
+            {status: 204, headers: {...this.corsHeaders, ...responseHeaders}});
+      }
+
+      // Check rate limit for all non-OPTIONS requests
+      if (this.isRateLimited(clientIP)) {
+        return this.createResponse(
+            {
+              error: 'Too many requests',
+              retryAfter: Math.ceil(this.config.rateLimitWindow / 1000)
+            },
+            429, {
+              ...responseHeaders,
+              'Retry-After':
+                  Math.ceil(this.config.rateLimitWindow / 1000).toString()
+            });
+      }
+
+      if (method === 'POST' && path === '/api/auth/login') {
+        return this.handleLogin(req, requestId);
+      }
+
+      const session = this.authenticateSession(req);
+      if (!session) {
+        return this.createResponse(
+            {error: 'Unauthorized'}, 401, responseHeaders);
+      }
+
+      // Update last activity
+      this.sessions.set(
+          session.sessionId,
+          {...this.sessions.get(session.sessionId), lastActivity: Date.now()});
+
+      if (method === 'POST' && path === '/api/auth/logout') {
+        await session.bot.destroy();
+        this.sessions.delete(session.sessionId);
+        return this.createResponse(
+            {message: 'Logged out successfully'}, 200, responseHeaders);
+      }
+
+      try {
+        if (method === 'GET') {
+          switch (path) {
+            case '/api/members':
+              const members = await session.bot.getMembers();
+              return this.createResponse(members, 200, responseHeaders);
+
+            case '/api/channels':
+              const channels = await session.bot.getChannels();
+              return this.createResponse(channels, 200, responseHeaders);
+
+            case '/api/messages':
+              const channelId = url.searchParams.get('channelId');
+              const limit =
+                  parseInt(url.searchParams.get('limit') || '100', 10);
+
+              if (!channelId) {
+                return this.createResponse(
+                    {error: 'Channel ID is required'}, 400, responseHeaders);
+              }
+
+              const messages = await session.bot.getMessages(channelId, limit);
+              return this.createResponse(messages, 200, responseHeaders);
+          }
+        }
+
+        return this.createResponse({error: 'Not Found'}, 404, responseHeaders);
+      } catch (error) {
+        console.error(`[${requestId}] Operation error:`, error);
+        return this.createResponse(
+            {error: error.message}, 500, responseHeaders);
+      }
+    } catch (error) {
+      console.error(`[${requestId}] Unhandled error:`, error);
+      return this.createResponse(
+          {error: 'Internal Server Error'}, 500, responseHeaders);
+    }
+  }
+
+  start() {
+    serve({
+      fetch: (req) => this.handleRequest(req),
+      port: this.config.port,
     });
+    console.log(`Server started on http://localhost:${this.config.port}`);
   }
 
-  logRequest(req, session.sessionId);
-
-  // Logout
-  if (method === 'POST' && path === '/api/auth/logout') {
-    await destroyBot(session.bot);
-    sessions.delete(session.sessionId);
-    console.log(`Session destroyed: ${session.sessionId}`);
-    return new Response(JSON.stringify({ message: 'Logged out successfully' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
-  // Fetch members
-  if (method === 'GET' && path === '/api/members') {
-    try {
-      const members = await fetchMembers(session.bot);
-      return new Response(JSON.stringify(members), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      console.error('Error fetching members:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+  async stop() {
+    this.stopCleanupInterval();
+    // Cleanup all active sessions
+    for (const [sessionId, session] of this.sessions.entries()) {
+      await session.bot.destroy();
+      this.sessions.delete(sessionId);
     }
   }
+}
 
-  // Fetch channels
-  if (method === 'GET' && path === '/api/channels') {
-    try {
-      const channels = await fetchChannels(session.bot);
-      return new Response(JSON.stringify(channels), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      console.error('Error fetching channels:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-  }
-
-  // Fetch messages
-  if (method === 'GET' && path.startsWith('/api/messages')) {
-    const channelId = url.searchParams.get('channelId');
-    const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-    if (!channelId) {
-      console.log('Missing channelId in messages request');
-      return new Response(JSON.stringify({ error: 'Channel ID is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    try {
-      const messages = await fetchMessages(session.bot, channelId, limit);
-      return new Response(JSON.stringify(messages), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-  }
-
-  console.log(`Not Found: ${path}`);
-  return new Response('Not Found', { status: 404, headers: corsHeaders });
-};
-
-serve({
-  fetch: handleRequest,
-  port: 3000,
-});
-
-console.log('Server started on http://localhost:3000');
+// Only start the server if this file is being run directly
+if (import.meta.url === Bun.main) {
+  const server = new Server();
+  server.start();
+}
