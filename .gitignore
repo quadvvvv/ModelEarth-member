@@ -1,8 +1,6 @@
 .env
 /venv/*
-*/node_modules/*
+**/node_modules/
 /backend/bun.lockb
-/node_modules/*
-/member/node_modules/*
 .DS_Store
 **/.DS_Store
